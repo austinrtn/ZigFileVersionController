@@ -11,13 +11,13 @@ const std = @import("std");
 //      json is parsed and saved into JsonInterface.new_entries
 //
 // 2)   All files from all of the sub-directories the user added in the 'DIRECTORIES' slice are iterated through.
-//      The files current mtime is compared to the cached mtime in cache.json, excluding files listed in the 'BLACKLIST' slice.
+//      The files current hashed contents is compared to the cached hashed contents in cache.json, excluding files listed in the 'BLACKLIST' slice.
 //
-// 3-a) If the file's cached mtime is equal to the file's current mtime, no modification to the file have been made since the last
+// 3-a) If the file's cached hashed content is equal to the file's current hash, no modification to the file have been made since the last
 //      time this program was ran and the cached file version stays the same. 
 //
-// 3-b) If the file's cached mtime is not equal to the file's current mtime, this mean the file has been modified since the last time
-//          this version was ran.  The cache stores the file's current mtime and the cached version number is updated.
+// 3-b) If the file's cached hashed content is not equal to the file's current hash, this mean the file has been modified since the last time
+//          this version was ran.  The cache stores the file's current hash and the cached version number is updated.
 //
 // 4)   Once all files in all listed directories have been iterated through and updated as necessary, the cache.json file is overwritten 
 //      with the new, updated entries.
@@ -29,7 +29,7 @@ const DIRECTORIES = [_][]const u8{
     "src/Protiens",
 };
 const BLACKLIST = [_][]const u8{
-    "src/Fruits/Apple",
+    //"src/Fruits/Apple",
 };
 
 pub fn main() !void {
@@ -99,7 +99,7 @@ const JsonEntry = struct {
     file: []const u8,
     full_path: []const u8,
 
-    mtime: i128 = 0,
+    hash: []const u8,
     version: usize = 0,
 };
 
@@ -186,18 +186,17 @@ const JsonInterface = struct {
 
     /// Creates a json object using contents of a JsonEntry instance 
     fn createObjMap(self: *Self, entry: JsonEntry) !std.json.ObjectMap{
-        // Create a JSON value from the entry data
         var obj_map= std.json.ObjectMap.init(self.allocator);
         try obj_map.put("dir", .{.string = entry.dir});
         try obj_map.put("file", .{.string = entry.file});
-        try obj_map.put("mtime", .{.integer = @intCast(entry.mtime)});
+        try obj_map.put("hash", .{.string = entry.hash});
         try obj_map.put("version", .{.integer = @intCast(entry.version)});
 
         return obj_map; 
     }
 
     /// Reads cache.json file contents and parses existing JSON
-    fn setEntries(self: *Self) !void {
+    fn parseCacheToJson(self: *Self) !void {
         try self.cache_file.seekTo(0);
         var file_size = (try self.cache_file.stat()).size;
 
@@ -228,7 +227,7 @@ const JsonInterface = struct {
     /// Update file version accordingly and stage changes to cache.  
     /// Run JsonInterface.flush to write changes to file
     fn updateVersionControl(self: *Self) !void {
-        try self.setEntries();
+        try self.parseCacheToJson();
         const entries = self.entries.?.object;
 
         // Iterate through directories
@@ -242,7 +241,7 @@ const JsonInterface = struct {
                 if(src_file.kind != .file) continue;
                 const file_name = try self.allocator.dupe(u8, src_file.name);
                 const full_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{dir_name, file_name});
-                
+
                 // Check if file is blacklisted, if so ignore it and 
                 // continue to next file
                 if(self.blacklist) |blacklist| {
@@ -255,32 +254,43 @@ const JsonInterface = struct {
                     }
                     if(blacklisted) continue;
                 }
-            
-                // Get the mtime of the source file
-                const src_file_mtime = (try self.root_dir.statFile(full_path)).mtime;
+
+                // Open source file and get size 
+                var file = try self.root_dir.openFile(full_path, .{});
+                defer file.close();
+                const file_size = (try file.stat()).size;
+
+                // Store contents of file 
+                var content_buffer: [1024 * 1024]u8 = undefined;
+                var reader = file.reader(&content_buffer);
+                const content = try reader.interface.readAlloc(self.allocator, file_size);
+
+                // Hash contents 
+                const src_hash_int = std.hash.Wyhash.hash(0, content);
+                const src_hash = try std.fmt.allocPrint(self.allocator, "{d}", .{src_hash_int}); 
+
                 // Initalize a json entry that will later be converted into a JSON object map
-                var json_entry = JsonEntry{.file = file_name, .dir = dir_name, .full_path = full_path, .mtime = src_file_mtime, .version = 0};
+                var json_entry = JsonEntry{.file = file_name, .dir = dir_name, .full_path = full_path, .hash = src_hash, .version = 0};
 
                 // If there already exist the source file's meta data within cache.json
                 if(entries.get(full_path)) |entry| {
                     var obj = entry.object; 
                      
                     // Get the cached mtime and version number from cache.json 
-                    const mtime_obj = obj.get("mtime") orelse return error.MissingField;
+                    const hash_obj = obj.get("hash") orelse return error.MissingField;
                     const version_obj = obj.get("version") orelse return error.MissingField;
-                    
-                    // Cast those values into zig readable types
-                    var mtime: i128 = @intCast(mtime_obj.integer);
+
+                    var hash = hash_obj.string;
                     var version: usize = @intCast(version_obj.integer);
 
                     // Compare the source file's mtime to file's cached mtime.
                     // Update cached mtime and increase the version if different
-                    if(src_file_mtime != mtime) {
-                        mtime = src_file_mtime;
+                    if(!std.mem.eql(u8, hash, src_hash)) {
+                        hash = src_hash;
                         version += 1;
                         try self.modified_files.append(self.allocator, full_path);
                     }
-                    json_entry.mtime = mtime; 
+                    json_entry.hash = hash; 
                     json_entry.version = version;
                 } else {
                     // If the file's metadata currently does NOT exist within

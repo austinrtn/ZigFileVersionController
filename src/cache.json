@@ -1,56 +1,68 @@
 {
-  "src/Fruits/Banana": {
-    "dir": "src/Fruits",
-    "file": "Banana",
-    "mtime": 1770391281231698148,
-    "version": 0
-  },
   "src/Fruits/Pineapple": {
     "dir": "src/Fruits",
     "file": "Pineapple",
-    "mtime": 1770428863627124635,
+    "hash": "7603731919299724259",
+    "version": 0
+  },
+  "src/Fruits/Apple": {
+    "dir": "src/Fruits",
+    "file": "Apple",
+    "hash": "17466076866485595777",
+    "version": 1
+  },
+  "src/Fruits/Banana": {
+    "dir": "src/Fruits",
+    "file": "Banana",
+    "hash": "18190196679882522072",
     "version": 0
   },
   "src/Fruits/Carrot": {
     "dir": "src/Fruits",
     "file": "Carrot",
-    "mtime": 1770391281316701215,
-    "version": 0
-  },
-  "src/Grains/Oats": {
-    "dir": "src/Grains",
-    "file": "Oats",
-    "mtime": 1770480706791953887,
+    "hash": "3889766522086060796",
     "version": 0
   },
   "src/Grains/Bread": {
     "dir": "src/Grains",
     "file": "Bread",
-    "mtime": 1769966973609731263,
+    "hash": "10246652476695939063",
     "version": 0
   },
   "src/Grains/Pasta": {
     "dir": "src/Grains",
     "file": "Pasta",
-    "mtime": 1769966953661419021,
+    "hash": "13183152653334357529",
     "version": 0
   },
-  "src/Protiens/Steak": {
-    "dir": "src/Protiens",
-    "file": "Steak",
-    "mtime": 1769967100154632189,
+  "src/Grains/Oats": {
+    "dir": "src/Grains",
+    "file": "Oats",
+    "hash": "4989878489028481968",
     "version": 0
   },
   "src/Protiens/Peanutbutter": {
     "dir": "src/Protiens",
     "file": "Peanutbutter",
-    "mtime": 1769967119497911848,
+    "hash": "17474352466310338755",
+    "version": 0
+  },
+  "src/Protiens/Pork": {
+    "dir": "src/Protiens",
+    "file": "Pork",
+    "hash": "290873116282709081",
+    "version": 0
+  },
+  "src/Protiens/Steak": {
+    "dir": "src/Protiens",
+    "file": "Steak",
+    "hash": "1679069754201568820",
     "version": 0
   },
   "src/Protiens/Beans": {
     "dir": "src/Protiens",
     "file": "Beans",
-    "mtime": 1770391281316701215,
+    "hash": "10371912651006799726",
     "version": 0
   }
 }
