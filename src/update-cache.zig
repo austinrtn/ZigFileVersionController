@@ -8,7 +8,7 @@ const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 // keep track of updating versions of files within a project.
 //
 // When the program is ran: 
-// 1)   A cache.json file is created if it doesn't exist already.  If it does exist, the 
+// 1)   A cache json file is created if it doesn't exist already.  If it does exist, the 
 //      json is parsed and saved into JsonInterface.new_entries
 //
 // 2)   All files from all of the sub-directories the user added in the 'DIRECTORIES' slice are iterated through.

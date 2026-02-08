@@ -31,8 +31,8 @@
     "dir": "src/Grains",
     "file": "Bread",
     "full_path": "src/Grains/Bread",
-    "hash": "10246652476695939063",
-    "version": 0
+    "hash": "15323051356869438322",
+    "version": 1
   },
   "src/Grains/Pasta": {
     "dir": "src/Grains",

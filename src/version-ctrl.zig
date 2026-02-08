@@ -129,10 +129,9 @@ pub fn main() !void {
                 const char = std.ascii.toLower(line[0]);
                 if(line.len == 1 and (char == 'y' or char == 'n')) {
                     if(char == 'n') return;
+
                     try client_interface.downloadEntries(entries_to_update.items);
-                    for(client_interface.success_files.items) |item| {
-                        try writer.print("{s}: \n{s}\n\n", .{item.file_path, item.content});
-                    }
+                    try client_interface.overwriteUpdatedFiles();
                     break;
 
                 } else {
@@ -152,7 +151,7 @@ pub fn main() !void {
     }
 
     try old_cache_interface.updateCache(temp_cache_interface.file_content);
-    //try root_dir.deleteFile(TEMP_CACHE_PATH);
+    try root_dir.deleteFile(TEMP_CACHE_PATH);
 }
 
 const ClientInterface = struct {
@@ -273,12 +272,13 @@ const ClientInterface = struct {
 
     fn overwriteUpdatedFiles(self: *Self) !void {
         for(self.success_files.items) |entry| {
-            var file = try self.root_dir.createFile(entry.file_path, {});
+            var file = try self.root_dir.createFile(entry.file_path, .{});
             defer file.close();
             var buf: [1024 * 1024]u8 = undefined;
             var fw = file.writer(&buf);
 
-            fw.interface.print("{s}", .{entry.content});
+            try fw.interface.print("{s}", .{entry.content});
+            try fw.interface.flush();
         }
 
         for(self.failed_files.items) |file_path| {
