@@ -1,7 +1,9 @@
 const std = @import("std");
+const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
-const REPO_URL = "https://raw.githubusercontent.com/austinrtn/FileCacheTest/main/";
-const CACHE_PATH = "src/file_cache.json";
+const REPO_URL = "https://raw.githubusercontent.com/austinrtn/FileCacheTest/refs/heads/master/";
+const OLD_CACHE_PATH = "src/file_cache.json";
+const TEMP_CACHE_PATH = "src/cache_temp.json";
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -12,8 +14,6 @@ pub fn main() !void {
     _ = args.next();
 
     const ROOT_PATH = args.next() orelse return error.RootPathNotFound; 
-    var root_dir = try std.fs.cwd().openDir(ROOT_PATH, .{});
-    defer root_dir.close();
 
     var writer_buf: [1024 * 1024]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&writer_buf);
@@ -24,52 +24,174 @@ pub fn main() !void {
     try writer.writeAll("\x1B[H");
     try writer.flush();
 
-    var file = try root_dir.openFile(CACHE_PATH, .{});
-    defer file.close();
-    const file_cache_size = (try file.stat()).size;
+    var hash_map = std.StringArrayHashMap(usize).init(allocator); 
+    defer hash_map.deinit();
 
-    var file_cache_buf: [1024 * 1024]u8 = undefined;
-    var file_cache_reader = file.reader(&file_cache_buf);
+    var files_needing_update = std.ArrayList([]const u8){};
+    defer files_needing_update.deinit(allocator);
+    
+    var old_cache_interface = try CacheFile.init(allocator, OLD_CACHE_PATH, ROOT_PATH);
+    defer old_cache_interface.deinit();
+    const old_entries = try old_cache_interface.parseAndStoreEntries();
 
-    try file_cache_reader.seekTo(0);
-    try file_cache_reader.interface.fill(file_cache_size);
+    for(old_entries) |entry| {
+        try hash_map.put(entry.full_path, entry.version);
+    }
 
-    const cache_content = try file_cache_reader.interface.readAlloc(allocator, file_cache_size);
-    defer allocator.free(cache_content);
+    var temp_cache_interface = try CacheFile.init(allocator, TEMP_CACHE_PATH, ROOT_PATH);
+    defer temp_cache_interface.deinit();
+    const temp_entries = try temp_cache_interface.parseAndStoreEntries();
 
-    // var json_scanner = std.json.Scanner.initCompleteInput(allocator, cache_content);
-    // defer json_scanner.deinit();
-    //
-    // const parsed = try std.json.parseFromTokenSource(std.json.Value, allocator, &json_scanner, .{});
-    // defer parsed.deinit();
+    for(temp_entries) |entry| {
+        if(hash_map.get(entry.full_path)) |old_version| {
+            if(old_version != entry.version) try files_needing_update.append(allocator, entry.full_path);
+        }
+    }
 
-    //const json_values = parsed.value.object;
-    // const json_obj = json_values.get("src/Fruits/Banana") orelse return error.NotFound;
-    // const version_ = json_obj.object.get("version") orelse return error.NotFound;
-
-    var client = std.http.Client{.allocator = allocator};
-    defer client.deinit();
-
-    const cache_temp = try root_dir.createFile("cache_temp.zig", .{});
-    defer cache_temp.close();
-
-    var redir_buf:[1024 * 1024]u8 = undefined;
-    var response_buf:[1024 * 1024]u8 = undefined;
-    var response_writer = cache_temp.writer(&response_buf);
-
-    const url = REPO_URL ++ "src/file_cache.json";
-    const uri = try std.Uri.parse(url); 
-
-    const result = try client.fetch(.{
-        .location = .{.uri = uri},
-        .method = .GET,
-        .redirect_buffer = &redir_buf,
-        .response_writer = &response_writer.interface,
-    }); 
-
-    try writer.print("{s}\n", .{url});
+    try writer.print("{} Files need udpating!\n", .{files_needing_update.items.len});
+    for(files_needing_update.items) |file| {
+        try writer.print("{s}\n", .{file});
+    }
     try writer.flush();
 
-    if(result.status != .ok) return error.FailedToDownload;
+    try old_cache_interface.updateCache(temp_cache_interface.file_content);
+
+    // var client = std.http.Client{.allocator = allocator};
+    // defer client.deinit();
+    //
+    // const cache_temp = try root_dir.createFile("cache_temp.zig", .{});
+    // defer cache_temp.close();
+    //
+    // var redir_buf:[1024 * 1024]u8 = undefined;
+    // var response_buf:[1024 * 1024]u8 = undefined;
+    // var response_writer = cache_temp.writer(&response_buf);
+    //
+    // const url = REPO_URL ++ CACHE_PATH;
+    // const uri = try std.Uri.parse(url); 
+    //
+    // const result = try client.fetch(.{
+    //     .location = .{.uri = uri},
+    //     .method = .GET,
+    //     .redirect_buffer = &redir_buf,
+    //     .response_writer = &response_writer.interface,
+    // }); 
+    //
+    // try response_writer.interface.flush();
+    //
+    // if(result.status != .ok) return error.HttpRequest;
+    //
+    // try writer.print("{s}\n", .{url});
+    // try writer.flush();
+
 }
 
+const ClientInterface = struct {
+
+};
+
+const CacheFile = struct {
+    const Self = @This();
+
+    arena_alloc: *std.heap.ArenaAllocator,
+    allocator: std.mem.Allocator,
+    file: std.fs.File,
+    file_content: []const u8 = undefined,
+
+    json_entries: []JsonEntry = undefined,
+
+    pub fn init(gpa: std.mem.Allocator, file_path: []const u8, root_dir_path: []const u8) !Self {
+        const arena_alloc_ptr = try gpa.create(std.heap.ArenaAllocator);
+        arena_alloc_ptr.* = std.heap.ArenaAllocator.init(gpa);
+        const allocator = arena_alloc_ptr.allocator();
+
+        errdefer {
+            arena_alloc_ptr.deinit();
+            gpa.destroy(arena_alloc_ptr);
+        }
+
+        var root_dir = try std.fs.cwd().openDir(root_dir_path, .{});
+        defer root_dir.close();
+        
+        const file = try root_dir.openFile(file_path, .{.mode = .read_write});
+
+        const self: Self = .{
+            .allocator = allocator, 
+            .arena_alloc = arena_alloc_ptr,
+            .file = file,
+        };
+        return self;
+    }
+
+    pub fn deinit(self: *Self) void {
+        const child_alloc = self.arena_alloc.child_allocator;
+        self.file.close();
+
+        self.arena_alloc.deinit();
+        child_alloc.destroy(self.arena_alloc);
+    }
+
+    fn parseAndStoreEntries(self: *Self) ![]JsonEntry{
+        var entries = std.ArrayList(JsonEntry){};
+        defer entries.deinit(self.allocator);
+
+        try self.file.seekTo(0);
+        const file_size = (try self.file.stat()).size;
+
+        var content_buf:[1024 * 1024]u8 = undefined;
+        var content_reader = self.file.reader(&content_buf);
+        const content = try content_reader.interface.readAlloc(self.allocator, file_size);
+
+        var json_scanner = std.json.Scanner.initCompleteInput(self.allocator, content);
+        defer json_scanner.deinit();
+
+        const parsed = try std.json.parseFromTokenSource(std.json.Value, self.allocator, &json_scanner, .{});
+        const main_entry_map = parsed.value.object;
+        var entry_iter = main_entry_map.iterator();
+
+        while(entry_iter.next()) |unformated_entry| {
+            const entry_map = unformated_entry.value_ptr.*;
+            const json_entry = try convertJsonMapToEntry(entry_map.object);
+            try entries.append(self.allocator, json_entry); 
+        }
+
+        self.file_content = try self.allocator.dupe(u8, content);
+        self.json_entries = try entries.toOwnedSlice(self.allocator);
+        return self.json_entries;
+    }
+
+    fn convertJsonMapToEntry(json_obj: std.json.ObjectMap) !JsonEntry {
+        const file_obj = json_obj.get("file") orelse return error.MissingJsonField;
+        const file = file_obj.string;
+
+        const dir_obj = json_obj.get("dir") orelse return error.MissingJsonField;
+        const dir = dir_obj.string;
+
+        const full_path_obj = json_obj.get("full_path") orelse return error.MissingJsonField;
+        const full_path = full_path_obj.string;
+
+        const hash_obj = json_obj.get("hash") orelse return error.MissingJsonField;
+        const hash = hash_obj.string;
+
+        const version_obj = json_obj.get("version") orelse return error.MissingJsonField;
+        const version: usize = @intCast(version_obj.integer);
+
+        return .{
+            .file = file,
+            .dir = dir,
+            .full_path = full_path, 
+            .hash = hash,
+            .version = version,
+        };
+    }
+
+    fn updateCache(self: *Self, file_content: []const u8) !void {
+        var writer_buf: [1024 * 1024]u8 = undefined;
+        var writer = self.file.writer(&writer_buf);
+
+        try writer.interface.writeAll("");
+        try writer.interface.flush();
+
+        try writer.interface.print("{s}", .{file_content});
+        try writer.interface.flush();
+    }
+};

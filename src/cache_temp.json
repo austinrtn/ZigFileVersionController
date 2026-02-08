@@ -1,0 +1,72 @@
+{
+  "src/Fruits/Pineapple": {
+    "dir": "src/Fruits",
+    "file": "Pineapple",
+    "full_path": "src/Fruits/Pineapple",
+    "hash": "7603731919299724259",
+    "version": 1
+  },
+  "src/Fruits/Banana": {
+    "dir": "src/Fruits",
+    "file": "Banana",
+    "full_path": "src/Fruits/Banana",
+    "hash": "18190196679882522072",
+    "version": 0
+  },
+  "src/Fruits/Carrot": {
+    "dir": "src/Fruits",
+    "file": "Carrot",
+    "full_path": "src/Fruits/Carrot",
+    "hash": "3889766522086060796",
+    "version": 0
+  },
+  "src/Grains/Bread": {
+    "dir": "src/Grains",
+    "file": "Bread",
+    "full_path": "src/Grains/Bread",
+    "hash": "10246652476695939063",
+    "version": 0
+  },
+  "src/Grains/Pasta": {
+    "dir": "src/Grains",
+    "file": "Pasta",
+    "full_path": "src/Grains/Pasta",
+    "hash": "13183152653334357529",
+    "version": 0
+  },
+  "src/Grains/Oats": {
+    "dir": "src/Grains",
+    "file": "Oats",
+    "full_path": "src/Grains/Oats",
+    "hash": "4989878489028481968",
+    "version": 0
+  },
+  "src/Protiens/Peanutbutter": {
+    "dir": "src/Protiens",
+    "file": "Peanutbutter",
+    "full_path": "src/Protiens/Peanutbutter",
+    "hash": "17474352466310338755",
+    "version": 0
+  },
+  "src/Protiens/Pork": {
+    "dir": "src/Protiens",
+    "file": "Pork",
+    "full_path": "src/Protiens/Pork",
+    "hash": "290873116282709081",
+    "version": 0
+  },
+  "src/Protiens/Steak": {
+    "dir": "src/Protiens",
+    "file": "Steak",
+    "full_path": "src/Protiens/Steak",
+    "hash": "1679069754201568820",
+    "version": 0
+  },
+  "src/Protiens/Beans": {
+    "dir": "src/Protiens",
+    "file": "Beans",
+    "full_path": "src/Protiens/Beans",
+    "hash": "10371912651006799726",
+    "version": 0
+  }
+}

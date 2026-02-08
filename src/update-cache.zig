@@ -1,4 +1,5 @@
 const std = @import("std");
+const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
 //*****************************
 // JSON VERSION CONTROL UPDATER
@@ -95,16 +96,6 @@ pub fn main() !void {
     try writer.writeAll("\nEverything up to date!\n");
 }
 
-// What gets parsed to and from for JSON data
-const JsonEntry = struct {
-    dir: []const u8,
-    file: []const u8,
-    full_path: []const u8,
-
-    hash: []const u8,
-    version: usize = 0,
-};
-
 const JsonInterface = struct {
     pub const Self = @This();
 
@@ -194,6 +185,7 @@ const JsonInterface = struct {
         var obj_map= std.json.ObjectMap.init(self.allocator);
         try obj_map.put("dir", .{.string = entry.dir});
         try obj_map.put("file", .{.string = entry.file});
+        try obj_map.put("full_path", .{.string = entry.full_path});
         try obj_map.put("hash", .{.string = entry.hash});
         try obj_map.put("version", .{.integer = @intCast(entry.version)});
 
