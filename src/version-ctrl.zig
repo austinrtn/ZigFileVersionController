@@ -151,9 +151,8 @@ pub fn main() !void {
         try writer.flush();
     }
 
-    try root_dir.deleteFile(TEMP_CACHE_PATH);
-
     try old_cache_interface.updateCache(temp_cache_interface.file_content);
+    //try root_dir.deleteFile(TEMP_CACHE_PATH);
 }
 
 const ClientInterface = struct {
@@ -166,7 +165,7 @@ const ClientInterface = struct {
 
     client: *std.http.Client,
     repo_url: []const u8,
-    temp_cache_path: []const u8,
+    cache_path: []const u8,
 
     success_files: std.ArrayList(struct{file_path: []const u8, content: []const u8}) = .{},
     failed_files: std.ArrayList([]const u8) = .{},
@@ -175,7 +174,7 @@ const ClientInterface = struct {
         gpa: std.mem.Allocator, 
         root_path: []const u8, 
         repo_url: []const u8,
-        temp_cache_path: []const u8,
+        cache_path: []const u8,
         ) !Self {
         const arena_alloc_ptr = try gpa.create(std.heap.ArenaAllocator); 
         arena_alloc_ptr.* = std.heap.ArenaAllocator.init(gpa);
@@ -192,7 +191,7 @@ const ClientInterface = struct {
             .allocator = allocator, 
             .repo_url = repo_url,
             .root_dir = root_dir_ptr,
-            .temp_cache_path = temp_cache_path,
+            .cache_path = cache_path,
             .client = client_ptr,
         };
         
@@ -213,10 +212,10 @@ const ClientInterface = struct {
     }
 
     fn downloadTempCache(self: *Self) !void {
-        const temp_cache_url = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{self.repo_url, self.temp_cache_path});
+        const temp_cache_url = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{self.repo_url, self.cache_path});
         const temp_cache_uri = try std.Uri.parse(temp_cache_url);
         
-        const temp_cache_file = try self.root_dir.createFile(self.temp_cache_path, .{});
+        const temp_cache_file = try self.root_dir.createFile(self.cache_path, .{});
         defer temp_cache_file.close();
 
         var redir_buf:[1024 * 1024]u8 = undefined;
