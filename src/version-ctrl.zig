@@ -17,18 +17,6 @@ pub fn main() !void {
     var root_dir = try std.fs.cwd().openDir(ROOT_PATH, .{});
     defer root_dir.close();
 
-    root_dir.access(OLD_CACHE_PATH, .{}) catch |err| switch(err) {
-        error.FileNotFound => {
-            var old_cache_file = try root_dir.createFile(OLD_CACHE_PATH, .{}); 
-            defer old_cache_file.close();
-            var buf: [64]u8 = undefined;
-            var ocf_writer = old_cache_file.writer(&buf);
-            try ocf_writer.interface.writeAll("{\n\n}");
-            try ocf_writer.interface.flush();
-        },
-        else => return err,
-    };
-
     var writer_buf: [1024 * 1024]u8 = undefined;
     var stdout = std.fs.File.stdout().writer(&writer_buf);
     const writer = &stdout.interface;
@@ -42,11 +30,36 @@ pub fn main() !void {
     try writer.writeAll("\x1B[H");
     try writer.flush();
 
+    while(args.next()) |arg| {
+        if(std.mem.eql(u8, "refresh", arg)) {
+            std.debug.print("Deleting cache... updating all files\n", .{});
+            root_dir.deleteFile(OLD_CACHE_PATH) catch |err| switch(err) {
+                error.FileNotFound => {},
+                else => return err,
+            };
+        }
+    }
+
+    root_dir.access(OLD_CACHE_PATH, .{}) catch |err| switch(err) {
+        error.FileNotFound => {
+            var old_cache_file = try root_dir.createFile(OLD_CACHE_PATH, .{}); 
+            defer old_cache_file.close();
+            var buf: [64]u8 = undefined;
+            var ocf_writer = old_cache_file.writer(&buf);
+            try ocf_writer.interface.writeAll("{\n\n}");
+            try ocf_writer.interface.flush();
+        },
+        else => return err,
+    };
+
     try writer.writeAll("Initing Program...\n");
     try writer.flush();
 
-    var hash_map = std.StringArrayHashMap(JsonEntry).init(allocator); 
-    defer hash_map.deinit();
+    var temp_entries_map = std.StringArrayHashMap(JsonEntry).init(allocator); 
+    defer temp_entries_map.deinit();
+
+    var old_entries_map = std.StringArrayHashMap(JsonEntry).init(allocator);
+    defer old_entries_map.deinit();
 
     var entries_to_update = std.ArrayList(JsonEntry){};
     defer entries_to_update.deinit(allocator);
@@ -80,14 +93,24 @@ pub fn main() !void {
     try writer.flush();
 
     for(temp_entries) |entry| {
-        try hash_map.put(entry.full_path, entry);
+        try temp_entries_map.put(entry.full_path, entry);
+    }
+
+    for(old_entries) |entry| {
+        try old_entries_map.put(entry.full_path, entry);
     }
 
     for(old_entries) |old_entry| {
-        if(hash_map.get(old_entry.full_path)) |temp_entry| {
+        if(temp_entries_map.get(old_entry.full_path)) |temp_entry| {
             if(temp_entry.version != old_entry.version) try entries_to_update.append(allocator, old_entry);
         } else {
             try deleted_files.append(allocator, old_entry.full_path);
+        }
+    }
+
+    for(temp_entries) |temp_entry| {
+        if(old_entries_map.get(temp_entry.full_path)) |_| { continue; } else {
+            try entries_to_update.append(allocator, temp_entry);
         }
     }
 
