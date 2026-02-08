@@ -1,5 +1,4 @@
 const std = @import("std");
-const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
 const REPO_URL = "https://raw.githubusercontent.com/austinrtn/FileCacheTest/refs/heads/master/";
 const OLD_CACHE_PATH = "src/file_cache.json";
@@ -67,31 +66,6 @@ pub fn main() !void {
         try writer.print("{s}\n", .{entry.full_path});
         try writer.writeAll("Would you like to update? [y/n]\n");
         try writer.flush();
-
-        while(true) {
-            if(reader.takeDelimiterExclusive('\n')) |line| {
-                if(line.len == 0) continue;
-                reader.toss(1);
-
-                const char = std.ascii.toLower(line[0]);
-                if(line.len == 1 and (char == 'y' or char == 'n')) {
-                    if(char == 'n') return;
-                    try client_interface.downloadEntries(entries_to_update.items);
-                    for(client_interface.success_files.items) |item| {
-                        try writer.print("{s}\n\n", .{item.content});
-                        try writer.flush();
-                    }
-                    break;
-                } else {
-                    try writer.writeAll("Invalid input! Try again...\n\n");
-                    try writer.flush();
-                    continue;
-                }
-            } else |err| switch(err) {
-                error.EndOfStream => break,
-                else => return err,
-            }
-        }
     }
 
     if(deleted_files.items.len > 0) try writer.print("{} Files to be deleted:\n", .{deleted_files.items.len});
@@ -100,8 +74,32 @@ pub fn main() !void {
         try writer.flush();
     }
 
-    //try old_cache_interface.updateCache(temp_cache_interface.file_content);
+    while(true) {
+        if(reader.takeDelimiterExclusive('\n')) |line| {
+            if(line.len == 0) continue;
+            reader.toss(1);
+            
+            const char = std.ascii.toLower(line[0]);
+            if(line.len == 1 and (char == 'y' or char == 'n')) {
+                if(char == 'n') return;
+                try client_interface.downloadEntries(entries_to_update.items);
+                for(client_interface.success_files.items) |item| {
+                    try writer.print("{s}: \n{s}\n\n", .{item.file_path, item.content});
+                }
+                break;
 
+            } else {
+                try writer.writeAll("Invalid input! Try again...\n\n");
+                try writer.flush();
+                continue;
+            }
+        } else |err| switch(err) {
+            error.EndOfStream => break,
+            else => return err,
+        }
+    }
+
+    try old_cache_interface.updateCache(temp_cache_interface.file_content);
 }
 
 const ClientInterface = struct {
@@ -331,3 +329,13 @@ const CacheFile = struct {
         try writer.interface.flush();
     }
 };
+
+pub const JsonEntry = struct {
+    dir: []const u8,
+    file: []const u8,
+    full_path: []const u8,
+
+    hash: []const u8,
+    version: usize = 0,
+};
+
