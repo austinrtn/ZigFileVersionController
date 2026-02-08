@@ -32,6 +32,11 @@ pub fn main() !void {
 
     var deleted_files = std.ArrayList([]const u8){};
     defer deleted_files.deinit(allocator);
+
+    var client_interface = try ClientInterface.init(allocator, ROOT_PATH, REPO_URL, TEMP_CACHE_PATH);
+    defer client_interface.deinit();
+
+    try client_interface.downloadTempCache();
     
     var old_cache_interface = try CacheFile.init(allocator, OLD_CACHE_PATH, ROOT_PATH);
     defer old_cache_interface.deinit();
@@ -60,43 +65,133 @@ pub fn main() !void {
 
     if(deleted_files.items.len > 0) try writer.print("{} Files to be deleted:\n", .{deleted_files.items.len});
     for(deleted_files.items) |file| {
-        try writer.print("{s}", .{file});
+        try writer.print("{s}\n", .{file});
     }
     try writer.flush();
 
     //try old_cache_interface.updateCache(temp_cache_interface.file_content);
 
-    // var client = std.http.Client{.allocator = allocator};
-    // defer client.deinit();
-    //
-    // const cache_temp = try root_dir.createFile("cache_temp.zig", .{});
-    // defer cache_temp.close();
-    //
-    // var redir_buf:[1024 * 1024]u8 = undefined;
-    // var response_buf:[1024 * 1024]u8 = undefined;
-    // var response_writer = cache_temp.writer(&response_buf);
-    //
-    // const url = REPO_URL ++ CACHE_PATH;
-    // const uri = try std.Uri.parse(url); 
-    //
-    // const result = try client.fetch(.{
-    //     .location = .{.uri = uri},
-    //     .method = .GET,
-    //     .redirect_buffer = &redir_buf,
-    //     .response_writer = &response_writer.interface,
-    // }); 
-    //
-    // try response_writer.interface.flush();
-    //
-    // if(result.status != .ok) return error.HttpRequest;
-    //
-    // try writer.print("{s}\n", .{url});
-    // try writer.flush();
-
 }
 
 const ClientInterface = struct {
+    const Self = @This();
 
+    arena_alloc: *std.heap.ArenaAllocator,
+    allocator: std.mem.Allocator,
+
+    root_dir: *std.fs.Dir,
+
+    client: *std.http.Client,
+    repo_url: []const u8,
+    temp_cache_path: []const u8,
+
+    success_files: std.ArrayList(struct{file_path: []const u8, content: []const u8}) = .{},
+    failed_files: std.ArrayList([]const u8) = .{},
+
+    fn init(
+        gpa: std.mem.Allocator, 
+        root_path: []const u8, 
+        repo_url: []const u8,
+        temp_cache_path: []const u8,
+        ) !Self {
+        const arena_alloc_ptr = try gpa.create(std.heap.ArenaAllocator); 
+        arena_alloc_ptr.* = std.heap.ArenaAllocator.init(gpa);
+        const allocator = arena_alloc_ptr.allocator();
+
+        const root_dir_ptr = try allocator.create(std.fs.Dir);
+        root_dir_ptr.* = try std.fs.cwd().openDir(root_path, .{});
+
+        const client_ptr = try allocator.create(std.http.Client);
+        client_ptr.* = std.http.Client{.allocator = allocator};
+
+        const self: Self = .{
+            .arena_alloc = arena_alloc_ptr,
+            .allocator = allocator, 
+            .repo_url = repo_url,
+            .root_dir = root_dir_ptr,
+            .temp_cache_path = temp_cache_path,
+            .client = client_ptr,
+        };
+        
+        return self;
+    }
+
+    fn deinit(self: *Self) void {
+        const child_alloc = self.arena_alloc.child_allocator;
+
+        self.success_files.deinit(self.allocator);
+        self.failed_files.deinit(self.allocator);
+        self.client.deinit();
+        self.root_dir.close();
+        self.allocator.destroy(self.root_dir);
+
+        self.arena_alloc.deinit();
+        child_alloc.destroy(self.arena_alloc);
+    }
+
+    fn downloadTempCache(self: *Self) !void {
+        const temp_cache_url = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{self.repo_url, self.temp_cache_path});
+        const temp_cache_uri = try std.Uri.parse(temp_cache_url);
+        
+        const temp_cache_file = try self.root_dir.createFile(self.temp_cache_path, .{});
+        defer temp_cache_file.close();
+
+        var redir_buf:[1024 * 1024]u8 = undefined;
+        var response_buf:[1024 * 1024]u8 = undefined;
+        var response_writer = temp_cache_file.writer(&response_buf);
+
+        const result = try self.client.fetch(.{
+            .location = .{.uri = temp_cache_uri},
+            .method = .GET,
+            .redirect_buffer = &redir_buf,
+            .response_writer = &response_writer.interface,
+        });
+
+        try response_writer.interface.flush();
+        if(result.status != .ok) return error.HttpRequest;
+    }
+
+    fn downloadEntries(self: *Self, entries: []const JsonEntry) !void {
+        for(entries) |entry| {
+            const url = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{self.repo_url, entry.full_path});
+            const uri = try std.Uri.parse(url);
+
+            const file = try self.root_dir.createFile("tmp", .{.read = true});
+            defer file.close();
+
+            var redir_buf:[1024 * 1024]u8 = undefined;
+            var response_buf:[1024 * 1024]u8 = undefined;
+            var response_writer = file.writer(&response_buf);
+
+            const result = try self.client.fetch(.{
+                .location = .{.uri = uri},
+                .method = .GET,
+                .redirect_buffer = &redir_buf,
+                .response_writer = &response_writer.interface,
+            });
+
+            try response_writer.interface.flush();
+
+            if(result.status == .ok) {
+                try file.seekTo(0);
+                const file_size = (try file.stat()).size;
+                var content_buf: [1024 * 1024]u8 = undefined;
+                var content_reader = file.reader(&content_buf);
+                const content = try content_reader.interface.readAlloc(self.allocator, file_size);
+                const content_dupe = try self.allocator.dupe(u8, content);
+
+                try self.success_files.append(self.allocator, .{.file_path = entry.full_path, .content = content_dupe});
+
+            } else {
+                try self.failed_files.append(self.allocator, entry);
+                return;
+            }
+        }
+    }
+
+    fn overwriteUpdatedFiles(_: *Self) !void {
+
+    }
 };
 
 const CacheFile = struct {
