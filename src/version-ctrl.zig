@@ -177,6 +177,62 @@ pub fn main() !void {
     try root_dir.deleteFile(TEMP_CACHE_PATH);
 }
 
+const VersionController = struct {
+    const Self = @This();
+    const Config = struct {
+        old_cache_path: []const u8,
+        temp_cache_path: []const u8,
+        root_dir_path: []const u8,
+    };
+
+    allocator: std.mem.Allocator,
+    client_interface: ClientInterface = undefined,
+    
+    old_cache_path: []const u8,
+    temp_cache_path: []const u8,
+    root_dir: *std.fs.Dir,
+
+    old_cache_file: CacheFile = undefined,
+    temp_cache_file: CacheFile = undefined,
+
+    reader_buf: [1024 * 1024]u8 = undefined,
+    reader: std.fs.File.Reader = undefined,
+
+    writer_buf: [1024]u8 = undefined,
+    writer: *std.fs.File.Writer, 
+
+    pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
+        const root_dir_ptr = try allocator.create(std.fs.Dir); 
+        root_dir_ptr.* = try std.fs.cwd(config.root_dir_path);
+
+        const old_cache_file_ptr = try allocator.create(CacheFile);
+        old_cache_file_ptr.* = CacheFile.init(allocator, config.old_cache_path, root_dir_ptr);
+
+        const temp_cache_file_ptr = try allocator.create(CacheFile);
+        temp_cache_file_ptr.* = CacheFile.init(allocator, config.temp_cache_path, root_dir_ptr);
+
+        var self = Self{
+            .allocator = allocator,
+            .old_cache_path = config.old_cache_path,
+            .temp_cache_path = config.temp_cache_path,
+            .root_dir = root_dir_ptr,
+        };
+
+        self.old_cache_file = old_cache_file_ptr;
+        self.temp_cache_path = temp_cache_file_ptr;
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.root_dir.close();
+        self.old_cache_file.deinit();
+        self.temp_cache_path.deinit();
+
+        self.allocator.destroy(self.old_cache_file);
+        self.allocator.destroy(self.temp_cache_path);
+        self.allocator.destroy(self.root_dir);
+    }
+};
+
 const ClientInterface = struct {
     const Self = @This();
 
@@ -194,16 +250,13 @@ const ClientInterface = struct {
 
     fn init(
         gpa: std.mem.Allocator, 
-        root_path: []const u8, 
+        root_dir: *std.fs.Dir,
         repo_url: []const u8,
         cache_path: []const u8,
         ) !Self {
         const arena_alloc_ptr = try gpa.create(std.heap.ArenaAllocator); 
         arena_alloc_ptr.* = std.heap.ArenaAllocator.init(gpa);
         const allocator = arena_alloc_ptr.allocator();
-
-        const root_dir_ptr = try allocator.create(std.fs.Dir);
-        root_dir_ptr.* = try std.fs.cwd().openDir(root_path, .{});
 
         const client_ptr = try allocator.create(std.http.Client);
         client_ptr.* = std.http.Client{.allocator = allocator};
@@ -212,7 +265,7 @@ const ClientInterface = struct {
             .arena_alloc = arena_alloc_ptr,
             .allocator = allocator, 
             .repo_url = repo_url,
-            .root_dir = root_dir_ptr,
+            .root_dir = root_dir,
             .cache_path = cache_path,
             .client = client_ptr,
         };
