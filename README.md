@@ -1,5 +1,5 @@
 ## Zig File Version Controller and Updater
-This program allows users to keep track and cache file versions within a repository or server, and allows users to download the latest versions of the version controlled files into their project directory.  The repository owners select which files should be tracked by the version controller, and those using selected
+This program allows users to keep track and cache file versions within a repository or server, and allows users to download the latest versions of the version controlled files into their project directory.  The repository owners select which files should be tracked by the version controller, and those using selected.
 
 ### Use Case
 This was created primarily for frameworks and the projects that use them.  I'm currently building a framework that can't be directly cloned, and not all files are relevant to the user using the framework.  This allows users to isolate only the files that need to be downloaded by those using the framework, and to update files incrementally as needed, without cloning the project or giving access to other, non-selected files.
