@@ -228,9 +228,10 @@ const VersionControlCacheUpdater = struct {
         // Iterate through directories
         for(self.dirs) |dir_name| {
             self.root_dir.access(dir_name, .{}) catch |err| switch(err) {
-                 error.FileNotFound => try self.root_dir.makeDir(dir_name, .{.iterate = true}),
+                 error.FileNotFound => try self.root_dir.makeDir(dir_name),
                  else => return err,
             };
+            var dir = try self.root_dir.openDir(dir_name, .{.iterate = true});
             defer dir.close();
             var dir_iterator = dir.iterate();
 
