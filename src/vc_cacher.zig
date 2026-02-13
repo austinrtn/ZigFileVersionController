@@ -1,7 +1,6 @@
 const std = @import("std");
 const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
-const TEMP_CACHE_PATH = "src/temp_cache.json";
 const FILES = [_]FileStruct {
     .{.dir = "src", .file_name = "RandomFile"},
 };
@@ -14,6 +13,7 @@ const BLACKLIST = [_][]const u8{
     //"src/Fruits/Apple",
 };
 
+const TEMP_CACHE_PATH = "src/temp_cache.json";
 const FileStruct = struct{dir: []const u8, file_name: []const u8}; 
 
 //*****************************
