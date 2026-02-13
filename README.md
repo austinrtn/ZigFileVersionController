@@ -1,8 +1,8 @@
 ## Zig File Version Controller and Updater
-This program allows users to keep track and cache file versions within a repository or server, and allows users to downloaded the latest versions of the version controlled files into their project directory.  The repository owners selects which files should be tracked by the version controller, and those using selected 
+This program allows users to keep track and cache file versions within a repository or server, and allows users to download the latest versions of the version controlled files into their project directory.  The repository owners select which files should be tracked by the version controller, and those using selected
 
 ### Use Case
-This was created primarily for frameworks and the projects that use them.  I'm currently building a framework that can't be directly cloned, and not all files are relevant to the user using the framework.  This allows to isolate only the files that need to be downloaded by those using the framework, and to update files incrementally as needed, without cloning the project or giving access to other, non-selected files.
+This was created primarily for frameworks and the projects that use them.  I'm currently building a framework that can't be directly cloned, and not all files are relevant to the user using the framework.  This allows users to isolate only the files that need to be downloaded by those using the framework, and to update files incrementally as needed, without cloning the project or giving access to other, non-selected files.
 
 ### Setup
 ###### Project Owner:
@@ -51,12 +51,12 @@ Within the `vc_cacher.zig` file, select which files and directories you would li
 
 ```zig
 const FILES = [_][]const u8 {
-    "src/main.zig,
+    "src/main.zig",
 };
 const DIRECTORIES = [_][]const u8{
     "src/Fruits",
     "src/Grains",
-    "src/Grains/Pastas"
+    "src/Grains/Pastas",
     "src/Proteins",
 };
 const BLACKLIST = [_][]const u8{
@@ -67,7 +67,7 @@ const BLACKLIST = [_][]const u8{
 Save changes, then exit the file and run `zig build vc-cache`.  This will produce a `temp_cache.json`.  This file is used to compare latest file versions to a remote user's local project.  Make sure that after running the command, the changes are committed to the repository / server hosting the files. 
 
 ###### Remote Project User
-Within the `vc_updater.zig` file,  set the `REPO_URL` variable to the main repository containing the `vc_cacher.zig` and `temp_cache.json` file.  Save changes, then exit the file and run `zig build vc-update`.  The `temp_cache.json` file will be downloaded from the main repository, and saved to local project as `local_cache.json`.  User will then be asked to confirm download of any new or modified files.  
+Within the `vc_updater.zig` file, set the `REPO_URL` variable to the main repository containing the `vc_cacher.zig` and `temp_cache.json` file.  Save changes, then exit the file and run `zig build vc-update`.  The `temp_cache.json` file will be downloaded from the main repository, and saved to local project as `local_cache.json`.  Users will then be asked to confirm download of any new or modified files.
 ###### CLI Usage:
 `zig build vc-cacher` 
 - Update Version Control cache within main repository.
@@ -79,7 +79,7 @@ Within the `vc_updater.zig` file,  set the `REPO_URL` variable to the main repos
 - Download latest versions of **ALL** files.  Recommended if files become corrupted or if error with the Version Controller.
 
 `zig build vc-updater -- force`
-- Bypass confirmation prompt, directly downloading all new / modified files. 
-- 
+- Bypass confirmation prompt, directly downloading all new / modified files.
+
 `zig build vc-updater -- help`
 - Get usage examples.
