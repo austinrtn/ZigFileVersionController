@@ -1,20 +1,19 @@
 const std = @import("std");
 const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
-const FILES = [_]FileStruct {
-    .{.dir = "src", .file_name = "RandomFile"},
+const FILES = [_][]const u8{
+    "src/RandomFile"
 };
 const DIRECTORIES = [_][]const u8{
-    //"src/Fruits",
-    //"src/Grains",
-    //"src/Protiens",
+    "src/Fruits",
+    "src/Grains",
+    "src/Protiens",
 };
 const BLACKLIST = [_][]const u8{
-    //"src/Fruits/Apple",
+    "src/Fruits/Apple",
 };
 
 const TEMP_CACHE_PATH = "src/temp_cache.json";
-const FileStruct = struct{dir: []const u8, file_name: []const u8}; 
 
 //*****************************
 // JSON VERSION CONTROL UPDATER
@@ -108,7 +107,7 @@ const VersionControlCacheUpdater = struct {
     cache_file: std.fs.File,
     cache_file_name: []const u8,
 
-    files: []const FileStruct,
+    files: []const []const u8,
     root_dir: *std.fs.Dir,
     dirs: []const []const u8,
     blacklist: ?std.StringHashMap(void) = null,
@@ -122,7 +121,7 @@ const VersionControlCacheUpdater = struct {
     new_files: std.ArrayList([]const u8) = undefined,
     
     /// Create new instance of VersionControlCacheUpdater
-    fn init(gpa: std.mem.Allocator, file_name: []const u8, root_path: []const u8, files: []const FileStruct, dirs: []const []const u8) !Self {
+    fn init(gpa: std.mem.Allocator, file_name: []const u8, root_path: []const u8, files: []const []const u8, dirs: []const []const u8) !Self {
         // Create arean allocator 
         const arena_ptr = try gpa.create(std.heap.ArenaAllocator);
         arena_ptr.* = std.heap.ArenaAllocator.init(gpa);
@@ -260,9 +259,10 @@ const VersionControlCacheUpdater = struct {
         }
 
         //iterate through indidual files 
-        for(self.files) |file|{
-            try self.root_dir.makePath(file.dir); // Create dir if doesn't arleady exist and open it 
-            const full_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{file.dir, file.file_name});
+        for(self.files) |full_path|{
+            const file_name = std.fs.path.basename(full_path);
+            const dir_name = std.fs.path.dirname(full_path) orelse return error.NotDir;
+            try self.root_dir.makePath(dir_name); // Create dir if doesn't arleady exist and open it 
 
             // Check if file is blacklisted, if so ignore it and 
             // continue to next file
@@ -271,7 +271,7 @@ const VersionControlCacheUpdater = struct {
             }
 
             // Convert into a JsonFriendly hashpmap, and then convert that into Json Value 
-            const json_map = try self.convertEntryIntoJson(file.file_name, file.dir, full_path);
+            const json_map = try self.convertEntryIntoJson(file_name, dir_name, full_path);
             const json_object = std.json.Value{.object = json_map};
 
             try self.new_entries.put(full_path, json_object);
