@@ -56,7 +56,7 @@ pub fn main() !void {
     try version_controller.run();
 }
 
-/// Handles all version control functionality: detecting chagnes between local and online repo,
+/// Handles all version control functionality: detecting changes between local and online repo,
 /// downloading updated versions of files, and overwriting old outdated files.
 const VersionController = struct {
     const Self = @This();
@@ -574,6 +574,10 @@ const ClientInterface = struct {
         if(!self.downloaded_files) return error.FilesNotDownloaded; 
 
         for(self.success_files.items) |entry| {
+            if(std.fs.path.dirname(entry.file_path)) |dir_path| {
+                try self.root_dir.makePath(dir_path);
+            }
+
             var file = try self.root_dir.createFile(entry.file_path, .{}); // Create / overwrite file of downloaded entry.  
             defer file.close();
             var buf: [1024 * 1024]u8 = undefined;
@@ -642,8 +646,8 @@ const CacheFile = struct {
 
         const parsed = try std.json.parseFromTokenSource(std.json.Value, self.allocator, &json_scanner, .{}); // Parse json from scanner
         const main_entry_map = parsed.value.object; // Convert json into zig readable object.  The entire file is a json object, 
-                                                    // containing sub-objects which represent JsonEntry structs 
-        var entry_iter = main_entry_map.iterator(); // object field iterator 
+                                                        // containing sub-objects which represent JsonEntry structs 
+        var entry_iter = main_entry_map.iterator(); // Object field iterator 
 
         // Iterate through Json objects and convert into JsonEntries
         while(entry_iter.next()) |unformated_entry| {

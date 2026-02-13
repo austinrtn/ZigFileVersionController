@@ -4,7 +4,7 @@
     "file": "Banana",
     "full_path": "src/Fruits/Banana",
     "hash": "1110721112745046183",
-    "version": 1
+    "version": 0
   },
   "src/Fruits/Pineapple": {
     "dir": "src/Fruits",
@@ -32,7 +32,7 @@
     "file": "Bread",
     "full_path": "src/Grains/Bread",
     "hash": "15323051356869438322",
-    "version": 1
+    "version": 0
   },
   "src/Grains/Pasta": {
     "dir": "src/Grains",

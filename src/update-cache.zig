@@ -2,14 +2,19 @@ const std = @import("std");
 const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
 const TEMP_CACHE_PATH = "src/temp_cache.json";
+const FILES = [_]FileStruct {
+    .{.dir = "src", .file_name = "RandomFile"},
+};
 const DIRECTORIES = [_][]const u8{
-    "src/Fruits",
-    "src/Grains",
-    "src/Protiens",
+    //"src/Fruits",
+    //"src/Grains",
+    //"src/Protiens",
 };
 const BLACKLIST = [_][]const u8{
-    "src/Fruits/Apple",
+    //"src/Fruits/Apple",
 };
+
+const FileStruct = struct{dir: []const u8, file_name: []const u8}; 
 
 //*****************************
 // JSON VERSION CONTROL UPDATER
@@ -56,7 +61,7 @@ pub fn main() !void {
     try writer.flush();
 
     //INIT INTERFACE
-    var cache_updater = try VersionControlCacheUpdater.init(gpa_allocator, TEMP_CACHE_PATH, ROOT_PATH, &DIRECTORIES);
+    var cache_updater = try VersionControlCacheUpdater.init(gpa_allocator, TEMP_CACHE_PATH, ROOT_PATH, &FILES, &DIRECTORIES);
     defer cache_updater.deinit();
 
     if(BLACKLIST.len > 0){
@@ -103,6 +108,7 @@ const VersionControlCacheUpdater = struct {
     cache_file: std.fs.File,
     cache_file_name: []const u8,
 
+    files: []const FileStruct,
     root_dir: *std.fs.Dir,
     dirs: []const []const u8,
     blacklist: ?std.StringHashMap(void) = null,
@@ -116,7 +122,7 @@ const VersionControlCacheUpdater = struct {
     new_files: std.ArrayList([]const u8) = undefined,
     
     /// Create new instance of VersionControlCacheUpdater
-    fn init(gpa: std.mem.Allocator, file_name: []const u8, root_path: []const u8, dirs: []const []const u8) !Self {
+    fn init(gpa: std.mem.Allocator, file_name: []const u8, root_path: []const u8, files: []const FileStruct, dirs: []const []const u8) !Self {
         // Create arean allocator 
         const arena_ptr = try gpa.create(std.heap.ArenaAllocator);
         arena_ptr.* = std.heap.ArenaAllocator.init(gpa);
@@ -145,6 +151,7 @@ const VersionControlCacheUpdater = struct {
             .cache_file= file,
             .cache_file_name= file_name,
             .root_dir = root_dir_ptr,
+            .files = files,
             .dirs = dirs,
 
             .arena_allocator = arena_ptr,
@@ -223,16 +230,13 @@ const VersionControlCacheUpdater = struct {
     /// Run VersionControlCacheUpdater.flush to write changes to file
     fn updateVersionControl(self: *Self) !void {
         try self.parseCacheToJson();
-        const entries = self.entries.?.object;
 
         // Iterate through directories
         for(self.dirs) |dir_name| {
-            self.root_dir.access(dir_name, .{}) catch |err| switch(err) {
-                 error.FileNotFound => try self.root_dir.makeDir(dir_name),
-                 else => return err,
-            };
+            try self.root_dir.makePath(dir_name); // Create dir if doesn't arleady exist and open it 
             var dir = try self.root_dir.openDir(dir_name, .{.iterate = true});
             defer dir.close();
+
             var dir_iterator = dir.iterate();
 
             // Iterate through files within directory
@@ -247,55 +251,84 @@ const VersionControlCacheUpdater = struct {
                     if(blacklist.get(full_path)) |_| continue;
                 }
 
-                // Open source file and get size 
-                var file = try self.root_dir.openFile(full_path, .{});
-                defer file.close();
-                const file_size = (try file.stat()).size;
+                // Convert into a JsonFriendly hashpmap, and then convert that into Json Value 
+                const json_map = try self.convertEntryIntoJson(file_name, dir_name, full_path);
+                const json_object = std.json.Value{.object = json_map};
 
-                // Store contents of file 
-                var content_buffer: [1024 * 1024]u8 = undefined;
-                var reader = file.reader(&content_buffer);
-                const content = try reader.interface.readAlloc(self.allocator, file_size);
-
-                // Hash contents 
-                const src_hash_int = std.hash.Wyhash.hash(0, content);
-                const src_hash = try std.fmt.allocPrint(self.allocator, "{d}", .{src_hash_int}); 
-
-                // Initalize a json entry that will later be converted into a JSON object map
-                var json_entry = JsonEntry{.file = file_name, .dir = dir_name, .full_path = full_path, .hash = src_hash, .version = 0};
-
-                // If there already exist the source file's meta data within cache.json
-                if(entries.get(full_path)) |entry| {
-                    var obj = entry.object; 
-                     
-                    // Get the cached mtime and version number from cache.json 
-                    const hash_obj = obj.get("hash") orelse return error.MissingField;
-                    const version_obj = obj.get("version") orelse return error.MissingField;
-
-                    var hash = hash_obj.string;
-                    var version: usize = @intCast(version_obj.integer);
-
-                    // Compare the source file's mtime to file's cached mtime.
-                    // Update cached mtime and increase the version if different
-                    if(!std.mem.eql(u8, hash, src_hash)) {
-                        hash = src_hash;
-                        version += 1;
-                        try self.modified_files.append(self.allocator, full_path);
-                    }
-                    json_entry.hash = hash; 
-                    json_entry.version = version;
-                } else {
-                    // If the file's metadata currently does NOT exist within
-                    // cache.json (the file is newly added to the directory)
-                    try self.new_files.append(self.allocator, full_path);
-                }
-
-                // Conver JsonEntry into json value and stage the entry
-                const obj_map = try self.createObjMap(json_entry);
-                const json_object = std.json.Value{.object = obj_map};
                 try self.new_entries.put(full_path, json_object);
             }
         }
+
+        //iterate through indidual files 
+        for(self.files) |file|{
+            try self.root_dir.makePath(file.dir); // Create dir if doesn't arleady exist and open it 
+            const full_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{file.dir, file.file_name});
+            std.debug.print("{s}\n", .{full_path});
+
+            // Check if file is blacklisted, if so ignore it and 
+            // continue to next file
+            if(self.blacklist) |blacklist| {
+                if(blacklist.get(full_path)) |_| continue;
+            }
+
+            // Convert into a JsonFriendly hashpmap, and then convert that into Json Value 
+            const json_map = try self.convertEntryIntoJson(file.file_name, file.dir, full_path);
+            const json_object = std.json.Value{.object = json_map};
+
+            try self.new_entries.put(full_path, json_object);
+        }
+    }
+
+    fn convertEntryIntoJson(self: *Self, file_name: []const u8, dir_name: []const u8, full_path: []const u8) !std.json.ObjectMap {
+        const entries = self.entries.?.object;
+
+        // Open source file and get size 
+        var file = try self.root_dir.openFile(full_path, .{});
+        defer file.close();
+        const file_size = (try file.stat()).size;
+
+        // Store contents of file 
+        var content_buffer: [1024 * 1024]u8 = undefined;
+        var reader = file.reader(&content_buffer);
+        const content = try reader.interface.readAlloc(self.allocator, file_size);
+
+        // Hash contents 
+        const src_hash_int = std.hash.Wyhash.hash(0, content);
+        const src_hash = try std.fmt.allocPrint(self.allocator, "{d}", .{src_hash_int}); 
+
+        // Initalize a json entry that will later be converted into a JSON object map
+        var json_entry = JsonEntry{.file = file_name, .dir = dir_name, .full_path = full_path, .hash = src_hash, .version = 0};
+
+
+        // If there already exist the source file's meta data within cache.json
+        if(entries.get(full_path)) |entry| {
+            var obj = entry.object; 
+             
+            // Get the cached mtime and version number from cache.json 
+            const hash_obj = obj.get("hash") orelse return error.MissingField;
+            const version_obj = obj.get("version") orelse return error.MissingField;
+
+            var hash = hash_obj.string;
+            var version: usize = @intCast(version_obj.integer);
+
+            // Compare the source file's mtime to file's cached mtime.
+            // Update cached mtime and increase the version if different
+            if(!std.mem.eql(u8, hash, src_hash)) {
+                hash = src_hash;
+                version += 1;
+                try self.modified_files.append(self.allocator, full_path);
+            }
+            json_entry.hash = hash; 
+            json_entry.version = version;
+        } else {
+            // If the file's metadata currently does NOT exist within
+            // cache.json (the file is newly added to the directory)
+            try self.new_files.append(self.allocator, full_path);
+        }
+
+        // Conver JsonEntry into json value and stage the entry
+        const obj_map = try self.createObjMap(json_entry);
+        return obj_map;
     }
 
     /// Write staged changes to file and return new/modfied names of files
