@@ -263,7 +263,6 @@ const VersionControlCacheUpdater = struct {
         for(self.files) |file|{
             try self.root_dir.makePath(file.dir); // Create dir if doesn't arleady exist and open it 
             const full_path = try std.fmt.allocPrint(self.allocator, "{s}/{s}", .{file.dir, file.file_name});
-            std.debug.print("{s}\n", .{full_path});
 
             // Check if file is blacklisted, if so ignore it and 
             // continue to next file
