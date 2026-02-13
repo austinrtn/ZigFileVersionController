@@ -1,6 +1,16 @@
 const std = @import("std");
 const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
+const CACHE_FILE_NAME = "src/temp_cache.json";
+const DIRECTORIES = [_][]const u8{
+    "src/Fruits",
+    "src/Grains",
+    "src/Protiens",
+};
+const BLACKLIST = [_][]const u8{
+    "src/Fruits/Apple",
+};
+
 //*****************************
 // JSON VERSION CONTROL UPDATER
 // *****************************
@@ -9,31 +19,19 @@ const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 //
 // When the program is ran: 
 // 1)   A cache json file is created if it doesn't exist already.  If it does exist, the 
-//      json is parsed and saved into JsonInterface.new_entries
+//      json is parsed and saved into VersionControlCacheUpdater.new_entries
 //
 // 2)   All files from all of the sub-directories the user added in the 'DIRECTORIES' slice are iterated through.
 //      The files current hashed contents is compared to the cached hashed contents in cache.json, excluding files listed in the 'BLACKLIST' slice.
 //
-// 3-a) If the file's cached hashed content is equal to the file's current hash, no modification to the file have been made since the last
+// 3a)  If the file's cached hashed content is equal to the file's current hash, no modification to the file have been made since the last
 //      time this program was ran and the cached file version stays the same. 
 //
-// 3-b) If the file's cached hashed content is not equal to the file's current hash, this mean the file has been modified since the last time
-//          this version was ran.  The cache stores the file's current hash and the cached version number is updated.
+// 3b)  If the file's cached hashed content is not equal to the file's current hash, this mean the file has been modified since the last time
+//      this version was ran.  The cache stores the file's current hash and the cached version number is updated.
 //
 // 4)   Once all files in all listed directories have been iterated through and updated as necessary, the cache.json file is overwritten 
 //      with the new, updated entries.
-
-const CACHE_FILE_NAME = "src/cache_temp.json";
-
-const DIRECTORIES = [_][]const u8{
-    "src/Fruits",
-    "src/Grains",
-    "src/Protiens",
-};
- 
-const BLACKLIST = [_][]const u8{
-    "src/Fruits/Apple",
-};
 
 pub fn main() !void {
     var args = std.process.args();
@@ -58,16 +56,16 @@ pub fn main() !void {
     try writer.flush();
 
     //INIT INTERFACE
-    var json_interface = try JsonInterface.init(gpa_allocator, CACHE_FILE_NAME, ROOT_PATH, &DIRECTORIES);
-    defer json_interface.deinit();
+    var cache_updater = try VersionControlCacheUpdater.init(gpa_allocator, CACHE_FILE_NAME, ROOT_PATH, &DIRECTORIES);
+    defer cache_updater.deinit();
 
     if(BLACKLIST.len > 0){
-        try json_interface.setBlacklist(&BLACKLIST);
+        try cache_updater.setBlacklist(&BLACKLIST);
     }
 
     // UPDATE INTERFACE AND GET NEW/MODDED FILES
-    try json_interface.updateVersionControl();
-    const files = try json_interface.flush();
+    try cache_updater.updateVersionControl();
+    const files = try cache_updater.flush();
     const total_files_moded = files.modified.len + files.new.len;
     
     // PRINT ANY CHANGES TO CACHCE
@@ -96,7 +94,7 @@ pub fn main() !void {
     try writer.writeAll("\nEverything up to date!\n");
 }
 
-const JsonInterface = struct {
+const VersionControlCacheUpdater = struct {
     pub const Self = @This();
 
     arena_allocator: *std.heap.ArenaAllocator,
@@ -117,7 +115,7 @@ const JsonInterface = struct {
     modified_files: std.ArrayList([]const u8) = undefined,
     new_files: std.ArrayList([]const u8) = undefined,
     
-    /// Create new instance of JsonInterface
+    /// Create new instance of VersionControlCacheUpdater
     fn init(gpa: std.mem.Allocator, file_name: []const u8, root_path: []const u8, dirs: []const []const u8) !Self {
         // Create arean allocator 
         const arena_ptr = try gpa.create(std.heap.ArenaAllocator);
@@ -222,14 +220,19 @@ const JsonInterface = struct {
 
     /// Check if files have been modfied or created since cache was last updated. 
     /// Update file version accordingly and stage changes to cache.  
-    /// Run JsonInterface.flush to write changes to file
+    /// Run VersionControlCacheUpdater.flush to write changes to file
     fn updateVersionControl(self: *Self) !void {
         try self.parseCacheToJson();
         const entries = self.entries.?.object;
 
         // Iterate through directories
         for(self.dirs) |dir_name| {
-            var dir = try self.root_dir.openDir(dir_name, .{.iterate = true});
+            var dir = blk: {
+                if(self.root_dir.access(dir_name, .{})) {
+                    break :blk try self.root_dir.openDir(dir_name, .{.iterate = true});
+                } 
+                break :blk try self.root_dir.makeDir(dir_name);
+            };            
             defer dir.close();
             var dir_iterator = dir.iterate();
 
