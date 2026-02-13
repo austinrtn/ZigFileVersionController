@@ -1,7 +1,7 @@
 const std = @import("std");
 const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
-const CACHE_FILE_NAME = "src/temp_cache.json";
+const TEMP_CACHE_PATH = "src/temp_cache.json";
 const DIRECTORIES = [_][]const u8{
     "src/Fruits",
     "src/Grains",
@@ -56,7 +56,7 @@ pub fn main() !void {
     try writer.flush();
 
     //INIT INTERFACE
-    var cache_updater = try VersionControlCacheUpdater.init(gpa_allocator, CACHE_FILE_NAME, ROOT_PATH, &DIRECTORIES);
+    var cache_updater = try VersionControlCacheUpdater.init(gpa_allocator, TEMP_CACHE_PATH, ROOT_PATH, &DIRECTORIES);
     defer cache_updater.deinit();
 
     if(BLACKLIST.len > 0){

@@ -479,7 +479,11 @@ const ClientInterface = struct {
         });
 
         try response_writer.interface.flush();
-        if(result.status != .ok) return error.HttpRequest;
+        if(result.status != .ok) {
+            std.debug.print("Failed downloading cache file from repo: {s/s}\n", .{REPO_URL, TEMP_CACHE_PATH});
+            std.debug.print("Make sure the name of TEMP_CACHE_PATH matches the TEMP_CACHE_PATH variable in update-cache.zig", .{});
+            return error.HttpRequest;
+        }
     }
 
 
