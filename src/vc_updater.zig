@@ -78,7 +78,7 @@ const VersionController = struct {
     temp_cache_path: []const u8,
     root_dir: *std.fs.Dir,
 
-    read_buf: [1024 * 8]u8 = undefined,
+    read_buf: [1024]u8 = undefined,
     write_buf: [1024]u8 = undefined, 
 
     stdin: std.fs.File.Reader = undefined, // used to get input from terminal
@@ -340,10 +340,7 @@ const VersionController = struct {
             try local_file.updateCache(temp_file.file_content); // Overwrite local cache file to match temp_cache contents 
         };
 
-        // Delete the temp cache file 
-        if (self.temp_cache_file) |temp_file| if(self.local_cache_file) |local_file| {
-            try self.root_dir.deleteFile(self.temp_cache_path);
-        };
+        try self.root_dir.deleteFile(self.temp_cache_path);
     }
 
     /// Use ClientInterface to download added / modified files 
@@ -465,14 +462,15 @@ const ClientInterface = struct {
         const temp_cache_file = try self.root_dir.createFile(self.cache_path, .{});
         defer temp_cache_file.close();
 
-        var redir_buf:[1024 * 1024]u8 = undefined;
-        var response_buf:[1024 * 1024]u8 = undefined;
-        var response_writer = temp_cache_file.writer(&response_buf);
+        const redir_buf = try self.allocator.alloc(u8, 1024 * 1024);
+        const response_buf = try self.allocator.alloc(u8, 1024 * 1024);
+
+        var response_writer = temp_cache_file.writer(response_buf);
 
         const result = try self.client.fetch(.{
             .location = .{.uri = temp_cache_uri},
             .method = .GET,
-            .redirect_buffer = &redir_buf,
+            .redirect_buffer = redir_buf,
             .response_writer = &response_writer.interface,
         });
 
@@ -511,15 +509,15 @@ const ClientInterface = struct {
             const file = try self.root_dir.createFile("tmp", .{.read = true});
 
             // Buffer to store file contents 
-            var redir_buf:[1024 * 1024]u8 = undefined;
-            var response_buf:[1024 * 1024]u8 = undefined;
-            var response_writer = file.writer(&response_buf);
+            const redir_buf = try self.allocator.alloc(u8, 1024 * 1024);
+            const response_buf = try self.allocator.alloc(u8, 1024 * 1024);
+            var response_writer = file.writer(response_buf);
 
             // HTTP request 
             const result = try self.client.fetch(.{
                 .location = .{.uri = uri},
                 .method = .GET,
-                .redirect_buffer = &redir_buf,
+                .redirect_buffer = redir_buf,
                 .response_writer = &response_writer.interface,
             });
 
@@ -528,8 +526,8 @@ const ClientInterface = struct {
             if(result.status == .ok) {
                 try file.seekTo(0);
                 const file_size = (try file.stat()).size;
-                var content_buf: [1024 * 1024]u8 = undefined;
-                var content_reader = file.reader(&content_buf);
+                const content_buf = try self.allocator.alloc(u8, 1024 * 1024);
+                var content_reader = file.reader(content_buf);
                 const content = try content_reader.interface.readAlloc(self.allocator, file_size); // Get contents of downloaded tmp file  
                 const content_dupe = try self.allocator.dupe(u8, content);
 
@@ -578,8 +576,8 @@ const ClientInterface = struct {
 
             var file = try self.root_dir.createFile(entry.file_path, .{}); // Create / overwrite file of downloaded entry.  
             defer file.close();
-            var buf: [1024 * 1024]u8 = undefined;
-            var fw = file.writer(&buf);
+            const buf = try self.allocator.alloc(u8, 1024 * 1024);
+            var fw = file.writer(buf);
 
             try fw.interface.print("{s}", .{entry.content});
             try fw.interface.flush();
@@ -638,8 +636,8 @@ const CacheFile = struct {
         try self.file.seekTo(0);
         const file_size = (try self.file.stat()).size;
 
-        var content_buf:[1024 * 1024]u8 = undefined;
-        var content_reader = self.file.reader(&content_buf);
+        const content_buf = try self.allocator.alloc(u8, 1024 * 1024);
+        var content_reader = self.file.reader(content_buf);
         const content = try content_reader.interface.readAlloc(self.allocator, file_size); // Get file content 
 
         // zig tool to parse Json
@@ -693,9 +691,9 @@ const CacheFile = struct {
 
     /// Overwrite cache file 
     fn updateCache(self: *Self, file_content: []const u8) !void {
-        self.file = try self.root_dir.createFile(self.file_path);
-        var writer_buf: [1024 * 1024]u8 = undefined;
-        var writer = self.file.writer(&writer_buf);
+        self.file = try self.root_dir.createFile(self.file_path, .{});
+        const writer_buf = try self.allocator.alloc(u8, 1024 * 1024);
+        var writer = self.file.writer(writer_buf);
 
         try writer.interface.print("{s}", .{file_content});
         try writer.interface.flush();
