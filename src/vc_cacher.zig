@@ -1,16 +1,15 @@
 const std = @import("std");
-const JsonEntry = @import("JsonEntry.zig").JsonEntry;
 
 const FILES = [_][]const u8{
-    "src/RandomFile"
+    //"src/main.zig"
 };
 const DIRECTORIES = [_][]const u8{
-    "src/Fruits",
-    "src/Grains",
-    "src/Protiens",
+    // "src/Fruits",
+    // "src/Grains",
+    // "src/Proteins",
 };
 const BLACKLIST = [_][]const u8{
-    "src/Fruits/Apple",
+    //"src/Fruits/Apple",
 };
 
 const TEMP_CACHE_PATH = "src/temp_cache.json";
@@ -72,7 +71,7 @@ pub fn main() !void {
     const files = try cache_updater.flush();
     const total_files_moded = files.modified.len + files.new.len;
     
-    // PRINT ANY CHANGES TO CACHCE
+    // PRINT ANY CHANGES TO CACHE
     if(total_files_moded > 0) {
         if(files.new.len > 0) {
             try writer.print("\n{} files created:\n", .{files.new.len});
@@ -117,12 +116,12 @@ const VersionControlCacheUpdater = struct {
 
     entries: ?std.json.Value = null,
     new_entries: std.json.ObjectMap = undefined, 
-    modified_files: std.ArrayList([]const u8) = undefined,
-    new_files: std.ArrayList([]const u8) = undefined,
+    modified_files: std.ArrayList([]const u8) = .{},
+    new_files: std.ArrayList([]const u8) = .{},
     
     /// Create new instance of VersionControlCacheUpdater
     fn init(gpa: std.mem.Allocator, file_name: []const u8, root_path: []const u8, files: []const []const u8, dirs: []const []const u8) !Self {
-        // Create arean allocator 
+        // Create arena allocator
         const arena_ptr = try gpa.create(std.heap.ArenaAllocator);
         arena_ptr.* = std.heap.ArenaAllocator.init(gpa);
         const allocator = arena_ptr.allocator();
@@ -158,7 +157,6 @@ const VersionControlCacheUpdater = struct {
         };
 
         self.new_entries = std.json.ObjectMap.init(allocator);
-        self.modified_files = std.ArrayList([]const u8){};
 
         return self;
     }
@@ -167,8 +165,7 @@ const VersionControlCacheUpdater = struct {
         const child_alloc = self.arena_allocator.child_allocator;
 
         self.cache_file.close();
-        self.modified_files.deinit(self.allocator);
-        self.new_files.deinit(self.allocator);
+        self.modified_files.deinit(self.allocator); self.new_files.deinit(self.allocator);
         self.new_entries.deinit();
         self.root_dir.close();
 
@@ -224,7 +221,7 @@ const VersionControlCacheUpdater = struct {
         self.entries = parsed.value;
     }
 
-    /// Check if files have been modfied or created since cache was last updated. 
+    /// Check if files have been modified or created since cache was last updated.
     /// Update file version accordingly and stage changes to cache.  
     /// Run VersionControlCacheUpdater.flush to write changes to file
     fn updateVersionControl(self: *Self) !void {
@@ -232,7 +229,7 @@ const VersionControlCacheUpdater = struct {
 
         // Iterate through directories
         for(self.dirs) |dir_name| {
-            try self.root_dir.makePath(dir_name); // Create dir if doesn't arleady exist and open it 
+            try self.root_dir.makePath(dir_name); // Create dir if doesn't already exist and open it 
             var dir = try self.root_dir.openDir(dir_name, .{.iterate = true});
             defer dir.close();
 
@@ -258,11 +255,11 @@ const VersionControlCacheUpdater = struct {
             }
         }
 
-        //iterate through indidual files 
+        //iterate through individual files
         for(self.files) |full_path|{
             const file_name = std.fs.path.basename(full_path);
             const dir_name = std.fs.path.dirname(full_path) orelse return error.NotDir;
-            try self.root_dir.makePath(dir_name); // Create dir if doesn't arleady exist and open it 
+            try self.root_dir.makePath(dir_name); // Create dir if doesn't already exist and open it 
 
             // Check if file is blacklisted, if so ignore it and 
             // continue to next file
@@ -325,12 +322,12 @@ const VersionControlCacheUpdater = struct {
             try self.new_files.append(self.allocator, full_path);
         }
 
-        // Conver JsonEntry into json value and stage the entry
+        // Convert JsonEntry into json value and stage the entry
         const obj_map = try self.createObjMap(json_entry);
         return obj_map;
     }
 
-    /// Write staged changes to file and return new/modfied names of files
+    /// Write staged changes to file and return new/modified names of files
     fn flush(self: *Self) !struct {modified: [][]const u8, new: [][]const u8} {
         // Overwrite the file completely
         const writeable_file = try self.root_dir.createFile(self.cache_file_name, .{}); 
@@ -364,5 +361,16 @@ const VersionControlCacheUpdater = struct {
             try self.blacklist.?.put(path, {});
         }
     }
+};
+
+/// Struct containing fields for CacheFile metadata.  
+/// Used to convert JsonObjectMaps from parsed json file into zig readable struct 
+pub const JsonEntry = struct {
+    dir: []const u8,
+    file: []const u8,
+    full_path: []const u8,
+
+    hash: []const u8,
+    version: usize = 0,
 };
 

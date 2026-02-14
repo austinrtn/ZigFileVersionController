@@ -8,11 +8,11 @@ const TEMP_CACHE_PATH = "src/temp_cache.json";
 // JSON VERSION CONTROL MANAGER
 // *****************************
 //
-// This tool is used in conjunction with the VersionControlCacheUpdater in ./update-cache.zig to update the 
-// newest version of a file from it's online repository into a local project.  
+// This tool is used in conjunction with the VersionControlCacheUpdater in ./update-cache.zig to update the
+// newest version of a file from its online repository into a local project.
 //
 // When the program is ran: 
-// 1)   A json file of cached file metadata of files to be inluded within a project is downloaded from the REPO_URL.
+// 1)   A json file of cached file metadata of files to be included within a project is downloaded from the REPO_URL.
 //      This is the "temp_cache" file.  The repository should contain the latest versions of the project files.
 //
 // 2)   Both the temp_cache and local_cache JSON files are parsed and converted into a Zig readable struct called JsonEntry.
@@ -82,7 +82,7 @@ const VersionController = struct {
     write_buf: [1024]u8 = undefined, 
 
     stdin: std.fs.File.Reader = undefined, // used to get input from terminal
-    stdout: std.fs.File.Writer = undefined, // used to print output to termianl 
+    stdout: std.fs.File.Writer = undefined, // used to print output to terminal
 
     local_cache_file: ?*CacheFile = null, // CacheFile struct for local project cache
     temp_cache_file: ?*CacheFile = null, // CacheFile struct for newest versions of cache.  Gets deleted after program executed 
@@ -96,7 +96,7 @@ const VersionController = struct {
     entries_to_delete: std.ArrayList([]const u8) = .{}, // Entries that no longer exist in latest update and need to be deleted
 
     refresh: bool = false, // If true, "refresh" arg was passed by user, delete all linked files 
-    force: bool = false, // If true, "force" arg was passed by user, and confrimation prompt will be skipped 
+    force: bool = false, // If true, "force" arg was passed by user, and confirmation prompt will be skipped
     help: bool = false, // If true, "help" arg was passed by user, and program should only print help text and terminate 
 
     /// Create VersionController instance
@@ -119,7 +119,7 @@ const VersionController = struct {
             .root_dir = root_dir_ptr,
         };
 
-        // Create stdout / stdin for input / ouptput 
+        // Create stdout / stdin for input / output
         const stdin = std.fs.File.stdin().reader(&self.read_buf);
         self.stdin = stdin;
 
@@ -205,17 +205,17 @@ const VersionController = struct {
                                                                         //
             // Check help arg
             else if(std.mem.eql(u8, "help", arg)) {
-                try writer.writeAll("\nCmd ussage: ");
+                try writer.writeAll("\nCmd usage: ");
                 try writer.writeAll("\nzig build version-ctrl -- [args]");
-                try writer.writeAll("\n\n-- force: Bypass confrimation prompt");
+                try writer.writeAll("\n\n-- force: Bypass confirmation prompt");
                 try writer.writeAll("\n-- refresh: Delete and redownload all linked files");
                 try writer.flush();
                 self.help = true;
                 return true;
             }
 
-            else { // Check for invalid arguements
-                try writer.print("Invalid arguement: {s}\nRun `zig build version-ctrl -- help` for more info.", .{arg});
+            else { // Check for invalid arguments
+                try writer.print("Invalid argument: {s}\nRun `zig build version-ctrl -- help` for more info.", .{arg});
                 try writer.flush();
                 return false;
             }
@@ -281,9 +281,9 @@ const VersionController = struct {
             if (self.refresh) { try buildHashMap(local_map, &[_]JsonEntry{}); }
             else { try buildHashMap(local_map, local_entries); }
         }
-        if(self.temp_cache_hash_map) |*temp_map| try buildHashMap(temp_map, local_entries);
+        if(self.temp_cache_hash_map) |*temp_map| try buildHashMap(temp_map, temp_entries);
 
-        // Determine which files need to be updated / delteed 
+        // Determine which files need to be updated / deleted
         try self.compareEntries(local_entries, temp_entries);
 
         // If entries from local cache match temp_cache entries, 
@@ -342,7 +342,6 @@ const VersionController = struct {
 
         // Delete the temp cache file 
         if (self.temp_cache_file) |temp_file| if(self.local_cache_file) |local_file| {
-            try local_file.updateCache(temp_file.file_content);
             try self.root_dir.deleteFile(self.temp_cache_path);
         };
     }
@@ -453,7 +452,6 @@ const ClientInterface = struct {
         self.success_files.deinit(self.allocator);
         self.failed_files.deinit(self.allocator);
         self.client.deinit();
-        self.allocator.destroy(self.root_dir);
 
         self.arena_alloc.deinit();
         child_alloc.destroy(self.arena_alloc);
@@ -496,12 +494,12 @@ const ClientInterface = struct {
         try interface.writeAll("\r\x1b[k"); // Clear terminal line 
         try interface.writeAll("│");
 
-        // Print emtpy loading bar 
+        // Print empty loading bar
         for(loading_bar) |char| {
             try interface.print("{s}", .{char});
         }
 
-        // File status indicators: sucessful downloads, failed downloads, and files left to download 
+        // File status indicators: successful downloads, failed downloads, and files left to download
         try interface.print("│ {}✔ │ {}⚠ │ {}⇩ │", .{self.success_files.items.len, self.failed_files.items.len, entries.len});
         try interface.flush();
 
@@ -525,7 +523,7 @@ const ClientInterface = struct {
                 .response_writer = &response_writer.interface,
             });
 
-            try response_writer.interface.flush(); // Write contents of downloaded fo file 
+            try response_writer.interface.flush(); // Write contents of downloaded to file
 
             if(result.status == .ok) {
                 try file.seekTo(0);
@@ -569,7 +567,7 @@ const ClientInterface = struct {
         }
     }
 
-    // Overwrite local files with recently downloaded, udpated versions 
+    // Overwrite local files with recently downloaded, updated versions
     fn overwriteUpdatedFiles(self: *Self) !void {
         if(!self.downloaded_files) return error.FilesNotDownloaded; 
 
@@ -594,8 +592,10 @@ const CacheFile = struct {
 
     arena_alloc: *std.heap.ArenaAllocator,
     allocator: std.mem.Allocator,
-    file: std.fs.File, // File struct containg cached file metadata in Json
+    file: std.fs.File, // File struct containing cached file metadata in Json
+    file_path: []const u8,
     file_content: []const u8 = undefined,
+    root_dir: *std.fs.Dir,
 
     json_entries: []JsonEntry = undefined, // Parsed json converted into JsonEntry struct 
 
@@ -616,6 +616,8 @@ const CacheFile = struct {
             .allocator = allocator, 
             .arena_alloc = arena_alloc_ptr,
             .file = file,
+            .file_path = file_path,
+            .root_dir = root_dir,
         };
         return self;
     }
@@ -664,7 +666,7 @@ const CacheFile = struct {
 
     /// Convert JsonObject map from parsed JSON into JsonEntry zig struct 
     fn convertJsonMapToEntry(json_obj: std.json.ObjectMap) !JsonEntry {
-        // Get indivdual fields 
+        // Get individual fields
         const file_obj = json_obj.get("file") orelse return error.MissingJsonField;
         const file = file_obj.string;
 
@@ -689,12 +691,11 @@ const CacheFile = struct {
         };
     }
 
+    /// Overwrite cache file 
     fn updateCache(self: *Self, file_content: []const u8) !void {
+        self.file = try self.root_dir.createFile(self.file_path);
         var writer_buf: [1024 * 1024]u8 = undefined;
         var writer = self.file.writer(&writer_buf);
-
-        try writer.interface.writeAll("");
-        try writer.interface.flush();
 
         try writer.interface.print("{s}", .{file_content});
         try writer.interface.flush();
