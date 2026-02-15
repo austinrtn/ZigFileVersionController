@@ -1,5 +1,8 @@
 const std = @import("std");
 
+/// Add all files and directories |
+/// you want to be updated here   |
+///                               V
 const FILES = [_][]const u8{
     //"src/main.zig"
 };
@@ -14,27 +17,27 @@ const BLACKLIST = [_][]const u8{
 
 const TEMP_CACHE_PATH = "src/temp_cache.json";
 
-//*****************************
-// JSON VERSION CONTROL UPDATER
-// *****************************
-// This program writes json files that 
-// keep track of updating versions of files within a project.
-//
-// When the program is ran: 
-// 1)   A cache json file is created if it doesn't exist already.  If it does exist, the 
-//      json is parsed and saved into VersionControlCacheUpdater.new_entries
-//
-// 2)   All files from all of the sub-directories the user added in the 'DIRECTORIES' slice are iterated through.
-//      The files current hashed contents is compared to the cached hashed contents in cache.json, excluding files listed in the 'BLACKLIST' slice.
-//
-// 3a)  If the file's cached hashed content is equal to the file's current hash, no modification to the file have been made since the last
-//      time this program was ran and the cached file version stays the same. 
-//
-// 3b)  If the file's cached hashed content is not equal to the file's current hash, this mean the file has been modified since the last time
-//      this version was ran.  The cache stores the file's current hash and the cached version number is updated.
-//
-// 4)   Once all files in all listed directories have been iterated through and updated as necessary, the cache.json file is overwritten 
-//      with the new, updated entries.
+///*************************************
+/// JSON VERSION CONTROL CACHE GENERATOR
+/// ************************************
+/// This program writes json files that 
+/// keep track of updating versions of files within a project.
+///
+/// When the program is ran: 
+/// 1)   A cache json file is created if it doesn't exist already.  If it does exist, the 
+///      json is parsed and saved into VersionControlCacheUpdater.new_entries
+///
+/// 2)   All files from all of the sub-directories the user added in the 'DIRECTORIES' slice are iterated through.
+///      The files current hashed contents is compared to the cached hashed contents in cache.json, excluding files listed in the 'BLACKLIST' slice.
+///
+/// 3a)  If the file's cached hashed content is equal to the file's current hash, no modification to the file have been made since the last
+///      time this program was ran and the cached file version stays the same. 
+///
+/// 3b)  If the file's cached hashed content is not equal to the file's current hash, this mean the file has been modified since the last time
+///      this version was ran.  The cache stores the file's current hash and the cached version number is updated.
+///
+/// 4)   Once all files in all listed directories have been iterated through and updated as necessary, the cache.json file is overwritten 
+///      with the new, updated entries.
 
 pub fn main() !void {
     var args = std.process.args();
@@ -184,9 +187,6 @@ const VersionControlCacheUpdater = struct {
     /// Creates a json object using contents of a JsonEntry instance 
     fn createObjMap(self: *Self, entry: JsonEntry) !std.json.ObjectMap{
         var obj_map= std.json.ObjectMap.init(self.allocator);
-        try obj_map.put("dir", .{.string = entry.dir});
-        try obj_map.put("file", .{.string = entry.file});
-        try obj_map.put("full_path", .{.string = entry.full_path});
         try obj_map.put("hash", .{.string = entry.hash});
         try obj_map.put("version", .{.integer = @intCast(entry.version)});
 

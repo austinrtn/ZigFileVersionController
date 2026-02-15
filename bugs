@@ -1,9 +1,0 @@
-  2. new_files is never initialized in VersionControlCacheUpdater.init() — 
-  modified_files gets initialized but new_files doesn't, which will likely crash at runtime when new_files.append is
-  called (vc_cacher.zig:324).
-  
-  4. updateCache writes an empty string first (vc_updater.zig:696) — 
-  writeAll("") is a no-op and doesn't truncate the file. If the new content is shorter than the old content, you'll have leftover bytes. You'd need to truncate the file or recreate it.
-
-  5. 1MB stack buffers everywhere — reader_buf, content_buffer, redir_buf, response_buf are all [1024 * 1024]u8 on the stack. 
-  This could easily blow the stack, especially since downloadEntries allocates multiple 1MB buffers per iteration. Consider heap-allocating these.

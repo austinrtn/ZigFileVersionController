@@ -1,30 +1,29 @@
 const std = @import("std");
-
-const REPO_URL = "https://raw.githubusercontent.com/austinrtn/FileCacheTest/refs/heads/master/"; 
+const REPO_URL = "insert_url_here";
 const LOCAL_CACHE_PATH = "src/local_cache.json";
 const TEMP_CACHE_PATH = "src/temp_cache.json";
 
-//*****************************
-// JSON VERSION CONTROL MANAGER
-// *****************************
-//
-// This tool is used in conjunction with the VersionControlCacheUpdater in ./update-cache.zig to update the
-// newest version of a file from its online repository into a local project.
-//
-// When the program is ran: 
-// 1)   A json file of cached file metadata of files to be included within a project is downloaded from the REPO_URL.
-//      This is the "temp_cache" file.  The repository should contain the latest versions of the project files.
-//
-// 2)   Both the temp_cache and local_cache JSON files are parsed and converted into a Zig readable struct called JsonEntry.
-//      The JsonEntry instances are stored into a bidirectional data structure using hashmaps that enables easy comparison of 
-//      entries.
-//
-// 3)   This temp_cache JsonEntries are compared to the local_cache JsonEntries to determine which files need updating or deleting.  
-//      This determination is made by comparing files version between local and temp entries, as well as comparing which temp_cache entries 
-//      exist in the local_cache file and vice-versa.
-//      
-// 4)   Files that are outdated or missing from the project are downloaded and written to disk.  Files that exist within the project but do not 
-//      exist in the temp_cache file are deleted.  
+///*****************************
+/// JSON VERSION CONTROL UPDATER
+/// *****************************
+///
+/// This tool is used in conjunction with the VersionControlCacheUpdater in ./update-cache.zig to update the
+/// newest version of a file from its online repository into a local project.
+///
+/// When the program is ran: 
+/// 1)   A json file of cached file metadata of files to be included within a project is downloaded from the REPO_URL.
+///      This is the "temp_cache" file.  The repository should contain the latest versions of the project files.
+///
+/// 2)   Both the temp_cache and local_cache JSON files are parsed and converted into a Zig readable struct called JsonEntry.
+///      The JsonEntry instances are stored into a bidirectional data structure using hashmaps that enables easy comparison of 
+///      entries.
+///
+/// 3)   This temp_cache JsonEntries are compared to the local_cache JsonEntries to determine which files need updating or deleting.  
+///      This determination is made by comparing files version between local and temp entries, as well as comparing which temp_cache entries 
+///      exist in the local_cache file and vice-versa.
+///      
+/// 4)   Files that are outdated or missing from the project are downloaded and written to disk.  Files that exist within the project but do not 
+///      exist in the temp_cache file are deleted.  
 
 
 pub fn main() !void {
@@ -90,7 +89,7 @@ const VersionController = struct {
     local_cache_hash_map: ?std.StringHashMap(JsonEntry) = null, // Contains JsonEntries of local cached files 
     temp_cache_hash_map: ?std.StringHashMap(JsonEntry) = null, // Contains JsonEntries of updated cached files 
 
-    entries_to_download: std.ArrayList(JsonEntry) = .{}, // Entries / files pending download
+    entries_to_download: std.ArrayList(JsonEntry) = .{}, // Entries pending download.  Combination of new_entries and entries_to_update
     new_entries: std.ArrayList(JsonEntry) = .{}, // Entries that do not exist locally that need to be downloaded 
     entries_to_update: std.ArrayList(JsonEntry) = .{}, // Entries that exist locally but need to be updated 
     entries_to_delete: std.ArrayList([]const u8) = .{}, // Entries that no longer exist in latest update and need to be deleted
@@ -288,7 +287,7 @@ const VersionController = struct {
 
         // If entries from local cache match temp_cache entries, 
         // no changes to file structure has been made and no update necessary 
-        if(self.entries_to_download.items.len == 0 ) {
+        if(self.entries_to_download.items.len == 0 and self.entries_to_delete.items.len == 0) {
             try writer.writeAll("Everything up to date!...\n");
             try writer.flush();
             return;
@@ -298,7 +297,7 @@ const VersionController = struct {
             try self.downloadEntries();
             if(try self.downloadFailed()) return; // Return if files fail to download
         } else {
-            try writer.print("{} files available for update.  Confirm update? [y/n]\n", .{self.entries_to_download.items.len});
+            try writer.print("{} files available for update.  Confirm update? [y/n]\n", .{ self.entries_to_download.items.len + self.entries_to_delete.items.len});
             try writer.flush();
 
             while(true) { // User confirmation to download updates
@@ -314,8 +313,22 @@ const VersionController = struct {
                         }
 
                         else if(char == 'y') {
-                            try self.downloadEntries(); 
-                            if(try self.downloadFailed()) return; // Return if files fail to download
+                            // Download new / modfieid files 
+                            if(self.entries_to_download.items.len > 0) {
+                                try self.downloadEntries(); 
+                                if(try self.downloadFailed()) return; // Return if one or more files fail to download
+                            }
+                            // Delete no longer existing files
+                            if(self.entries_to_delete.items.len > 0) {
+                                try writer.writeAll("Deleting outdated files...\n");
+                                try writer.flush();
+                                for(self.entries_to_delete.items) |entry| {
+                                    self.root_dir.deleteFile(entry) catch |err| switch(err){
+                                        error.FileNotFound => {}, 
+                                        else => return err,
+                                    };
+                                }
+                            }
                             break;
                         }
                     } else {
@@ -462,7 +475,8 @@ const ClientInterface = struct {
         const temp_cache_file = try self.root_dir.createFile(self.cache_path, .{});
         defer temp_cache_file.close();
 
-        const redir_buf = try self.allocator.alloc(u8, 1024 * 1024);
+        // buffer for http redirections 
+        const redir_buf = try self.allocator.alloc(u8, 1024);
         const response_buf = try self.allocator.alloc(u8, 1024 * 1024);
 
         var response_writer = temp_cache_file.writer(response_buf);
@@ -505,40 +519,29 @@ const ClientInterface = struct {
             const url = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{self.repo_url, entry.full_path});
             const uri = try std.Uri.parse(url);
 
-            // Create temporary file on disk that will store contents of file being downloaded 
-            const file = try self.root_dir.createFile("tmp", .{.read = true});
+            //buffer for http redirections
+            const redir_buf = try self.allocator.alloc(u8, 1024);
 
-            // Buffer to store file contents 
-            const redir_buf = try self.allocator.alloc(u8, 1024 * 1024);
-            const response_buf = try self.allocator.alloc(u8, 1024 * 1024);
-            var response_writer = file.writer(response_buf);
+            // Writer to store contents of http response in memory
+            var response_writer = std.io.Writer.Allocating.init(self.allocator);
+            defer response_writer.deinit();
 
             // HTTP request 
             const result = try self.client.fetch(.{
                 .location = .{.uri = uri},
                 .method = .GET,
                 .redirect_buffer = redir_buf,
-                .response_writer = &response_writer.interface,
+                .response_writer = &response_writer.writer,
             });
+            try response_writer.writer.flush();
 
-            try response_writer.interface.flush(); // Write contents of downloaded to file
-
-            if(result.status == .ok) {
-                try file.seekTo(0);
-                const file_size = (try file.stat()).size;
-                const content_buf = try self.allocator.alloc(u8, 1024 * 1024);
-                var content_reader = file.reader(content_buf);
-                const content = try content_reader.interface.readAlloc(self.allocator, file_size); // Get contents of downloaded tmp file  
-                const content_dupe = try self.allocator.dupe(u8, content);
-
-                try self.success_files.append(self.allocator, .{.file_path = entry.full_path, .content = content_dupe});
+            if(result.status == .ok) { // Save contents to ClientInterface struct 
+                const content = try self.allocator.dupe(u8, response_writer.writer.buffer);
+                try self.success_files.append(self.allocator, .{.file_path = entry.full_path, .content = content});
 
             } else {
                 try self.failed_files.append(self.allocator, entry.full_path);
             }
-
-            file.close();
-            try self.root_dir.deleteFile("tmp"); 
             
             // Update loading bar / status indicators 
             try interface.writeAll("\r\x1b[K");
@@ -567,8 +570,6 @@ const ClientInterface = struct {
 
     // Overwrite local files with recently downloaded, updated versions
     fn overwriteUpdatedFiles(self: *Self) !void {
-        if(!self.downloaded_files) return error.FilesNotDownloaded; 
-
         for(self.success_files.items) |entry| {
             if(std.fs.path.dirname(entry.file_path)) |dir_path| {
                 try self.root_dir.makePath(dir_path);
